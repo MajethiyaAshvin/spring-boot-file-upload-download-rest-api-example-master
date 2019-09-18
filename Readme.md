@@ -1,35 +1,36 @@
-## Spring Boot File Upload / Download Rest API Example
 
-**Tutorial**: [Uploading an Downloading files with Spring Boot](https://www.callicoder.com/spring-boot-file-upload-download-rest-api-example/)
+@RestController
+public class FileController {
 
-## Steps to Setup
+	private static final Logger logger = LoggerFactory.getLogger(FileController.class);
 
-**1. Clone the repository** 
-
-```bash
-git clone https://github.com/callicoder/spring-boot-file-upload-download-rest-api-example.git
-```
-
-**2. Specify the file uploads directory**
-
-Open `src/main/resources/application.properties` file and change the property `file.upload-dir` to the path where you want the uploaded files to be stored.
-
-```
-file.upload-dir=/Users/callicoder/uploads
-```
-
-**2. Run the app using maven**
-
-```bash
-cd spring-boot-file-upload-download-rest-api-example
-mvn spring-boot:run
-```
-
-That's it! The application can be accessed at `http://localhost:8080`.
-
-You may also package the application in the form of a jar and then run the jar file like so -
-
-```bash
-mvn clean package
-java -jar target/file-demo-0.0.1-SNAPSHOT.jar
-```
+	@Autowired
+    private FileStorageService fileStorageService;
+    
+    @PostMapping("/uploadFile")
+    public UploadFileResponse uploadFile(@RequestParam("file") MultipartFile file) {
+        String fileName = fileStorageService.storeFile(file);
+        String fileDownloadUri = ServletUriComponentsBuilder.fromCurrentContextPath().path("/downloadFile/").path(fileName).toUriString();
+        return new UploadFileResponse(fileName, fileDownloadUri,file.getContentType(), file.getSize());
+    }
+    
+    @PostMapping("/uploadMultipleFiles")
+    public List<UploadFileResponse> uploadMultipleFiles(@RequestParam("files") MultipartFile[] files) {
+        return Arrays.asList(files).stream().map(file -> uploadFile(file)).collect(Collectors.toList());
+    }
+    
+    @GetMapping("/downloadFile/{fileName:.+}")
+    public ResponseEntity<Resource> downloadFile(@PathVariable String fileName, HttpServletRequest request) {
+        Resource resource = fileStorageService.loadFileAsResource(fileName);
+        String contentType = null;
+        try {
+            contentType = request.getServletContext().getMimeType(resource.getFile().getAbsolutePath());
+        } catch (IOException ex) {
+            logger.info("Could not determine file type.");
+        }
+        if(contentType == null) {
+            contentType = "application/octet-stream";
+        }
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(contentType)).header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"").body(resource);
+    }
+}
